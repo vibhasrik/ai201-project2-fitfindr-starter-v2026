@@ -250,19 +250,74 @@ that produced it:
 **Happy path**
 
 ```
+$ python app.py ask 'vintage graphic tee under $30, size L' --trace
+[1] parse_query
+      in:  vintage graphic tee under $30, size L
+      out: {'description': 'vintage graphic tee', 'size': 'L', 'max_price': 30.0}
+[2] search_listings (MCP)
+      in:  {'description': 'vintage graphic tee', 'size': 'L', 'max_price': 30.0}
+      out: 5 items: lst_006…
+      →    branch: selected lst_006
+[3] suggest_outfit
+      in:  {'item': 'lst_006', 'wardrobe_items': 10}
+      out: **Outfit 1 (Grunge Streetwear):** Pair the graphic tee with the baggy straight-leg jeans, dark wash, and layer…
+[4] create_fit_card
+      in:  {'item': 'lst_006', 'outfit': '**Outfit 1 (Grunge Streetwear):** Pair the graphic tee with …'}
+      out: Scored this ultimate 2003 tour bootleg style graphic tee for just $24.00 on Depop. It’s got that perfectly wor…
 
+  Found:    Graphic Tee — 2003 Tour Bootleg Style — $24.0 on depop
 ```
 
 **Empty search**
 
 ```
+$ python app.py ask 'sequined tuxedo size XXS under $3' --trace
+[1] parse_query
+      in:  sequined tuxedo size XXS under $3
+      out: {'description': 'sequined tuxedo', 'size': 'XXS', 'max_price': 3.0}
+[2] search_listings (MCP)
+      in:  {'description': 'sequined tuxedo', 'size': 'XXS', 'max_price': 3.0}
+      out: [] (empty)
+      →    branch: empty, stopping
 
+  No listings matched "sequined tuxedo" in size XXS under $3. Try to use fewer or different keywords, or try another size, or raise your max price.
+
+0 model calls this session
 ```
 
-**On the MCP move:** <!-- what changed in your code, and whether anything
-behaved differently afterwards. If the rewire didn't work, say exactly where it
-broke — the error text and the last thing that worked. That earns the point in
-full. -->
+The empty run is two steps instead of four: it stops at the branch and never
+calls the model.
+
+**The three failure modes, triggered one at a time:**
+
+1. **Empty search** (`'sequined tuxedo size XXS under $3'`): stopped after
+   `search_listings` with the message above. `fit_card` stayed None. No change needed.
+2. **Empty wardrobe** (`'flannel shirt size L' --empty-wardrobe`):
+   `suggest_outfit` gave general advice instead of crashing: *"Pair the olive
+   canvas shacket with a classic white crewneck tee, well-fitted blue
+   straight-leg jeans, and clean white canvas sneakers for an effortless,
+   everyday look…"* No change needed.
+3. **Model unavailable** (bad `GEMINI_API_KEY`, new query
+   `'red plaid flannel for layering'`): the first run didn't hang or show a
+   stack trace, but only because `app.py` caught the exception
+   (`ModelUnavailable: The model rejected your API key…`). `run_agent` itself
+   raised, so anything else calling it would crash. I added a
+   `ModelUnavailable` handler in `agent.py::run_agent` that keeps the search
+   result and stops:
+
+   ```
+   [3] suggest_outfit
+         →    model unavailable, stopping
+
+     Found Oversized Flannel Shirt — Plaid Red/Black ($22 on thredUp), but couldn't reach the model to run suggest_outfit. The model rejected your API key. Check GEMINI_API_KEY in your .env file, or create a fresh key at aistudio.google.com. Then run the same query again.
+   ```
+
+**On the MCP move:** `search_listings` is registered in `mcp_server.py`, and
+`run_agent` calls it through `mcp_client.call_tool("search_listings", {...})`
+instead of importing it (step [2] above). Nothing else changed. For both a
+matching query (10 results) and an empty one, the list that came back over MCP
+was equal, dict for dict, to the direct call, so the tool was already returning
+plain JSON-friendly values (dicts, lists, floats, and None for brand).
 
 ---
 
