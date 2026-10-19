@@ -195,8 +195,6 @@ def write_report(rows, args):
                           for r in session.get("search_results") or []),
                 "",
             ]
-            if record["trace"]:
-                lines += ["Trace:", "", "```", record["trace"].rstrip(), "```", ""]
             if session.get("outfit_suggestion"):
                 lines += ["Outfit suggestion:", "", "```",
                           str(session["outfit_suggestion"]), "```", ""]

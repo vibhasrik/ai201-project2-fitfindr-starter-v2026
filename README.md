@@ -193,17 +193,99 @@ I used Claude in unit 4 to trigger the failures in milestone 2. I traced it myse
 
 | Criterion | Target | Try 1 | Try 2 | Try 3 | Try 4 | Try 5 | Verdict |
 | --------- | ------ | ----- | ----- | ----- | ----- | ----- | ------- |
-| 1.        |        |       |       |       |       |       |         |
-| 2.        |        |       |       |       |       |       |         |
-| 3.        |        |       |       |       |       |       |         |
-| 4.        |        |       |       |       |       |       |         |
-| 5.        |        |       |       |       |       |       |         |
+| 1. Matching query completes all three tools | 4 of 5 | PASS | PASS | PASS | PASS | PASS | MET (5/5) |
+| 2. Impossible query stops before tool 2 | 5 of 5 | PASS | PASS | PASS | PASS | PASS | MET (5/5) |
+| 3. Searched item is the item every tool receives | 5 of 5 | PASS | PASS | PASS | PASS | PASS | MET (5/5) |
+| 4. Fit card states the right facts (≥4 of 5 items, no invented brand) | 5 of 5 tries | PASS | PASS | PASS | PASS | PASS | MET (5/5) |
+| 5. Search respects size and price (all 5 searches) | 5 of 5 | FAIL | FAIL | FAIL | FAIL | FAIL | MISSED (0/5) |
 
-**Real output from one try**, pasted as text, naming the file and function
-that produced it:
+From `results/run_2026-10-19_0003_before.md`, written by `run_eval.py::main`
+(14 scenarios from `scenarios.py`, 5 tries each, caching off, temperature 0.9).
+For criteria 4 and 5, one try covers all five of that criterion's scenarios:
+try 2 of criterion 4 is the five fit cards from each scenario's second run.
+
+**Real output from try 1**, pasted as text. The traces come from `trace.step()`
+calls in `agent.py::run_agent`, fit cards from `tools.py::create_fit_card`,
+search results from `tools.py::search_listings` over MCP.
+
+Criterion 1 — `vintage graphic tee under $30`:
 
 ```
+[1] parse_query
+      in:  vintage graphic tee under $30
+      out: {'description': 'vintage graphic tee', 'size': None, 'max_price': 30.0}
+[2] search_listings (MCP)
+      in:  {'description': 'vintage graphic tee', 'size': None, 'max_price': 30.0}
+      out: 10 items: lst_002…
+      →    branch: selected lst_002
+[3] suggest_outfit
+      in:  {'item': 'lst_002', 'wardrobe_items': 10}
+      out: **Outfit 1:** Pair the Y2K Baby Tee with your baggy straight-leg jeans, dark wash and chunky white sneakers fo…
+[4] create_fit_card
+      in:  {'item': 'lst_002', 'outfit': '**Outfit 1:** Pair the Y2K Baby Tee with your baggy straight…'}
+      out: Channel your inner 2000s pop star with this dreamy white, pink, and purple butterfly print Y2K Baby Tee, givin…
 
+Fit card:
+Channel your inner 2000s pop star with this dreamy white, pink, and purple butterfly print Y2K Baby Tee, giving off the ultimate nostalgic, sweet-yet-edgy vibe. Grab it now for just $18.00 exclusively on Depop before it's gone!
+```
+
+Criterion 2 — `designer ballgown size XXS under $5`:
+
+```
+- stopped early: yes — No listings matched "designer ballgown" in size XXS under $5. Try to use fewer or different keywords, or try another size, or raise your max price.
+- selected_item: (none)
+- search_results: 0
+
+[1] parse_query
+      in:  designer ballgown size XXS under $5
+      out: {'description': 'designer ballgown', 'size': 'XXS', 'max_price': 5.0}
+[2] search_listings (MCP)
+      in:  {'description': 'designer ballgown', 'size': 'XXS', 'max_price': 5.0}
+      out: [] (empty)
+      →    branch: empty, stopping
+```
+
+Criterion 3 — `oversized flannel shirt under $40` (`lst_003` at every step):
+
+```
+- selected_item: Oversized Flannel Shirt — Plaid Red/Black ($22.0, thredUp)
+- search_results: 7
+  - lst_003: size XL (oversized), $22.0
+  ...
+[2] search_listings (MCP)
+      out: 7 items: lst_003…
+      →    branch: selected lst_003
+[3] suggest_outfit
+      in:  {'item': 'lst_003', 'wardrobe_items': 10}
+[4] create_fit_card
+      in:  {'item': 'lst_003', 'outfit': '**Outfit 1: 90s Grunge Casual**\nLayer the Oversized Flannel …'}
+```
+
+Criterion 4 — `butterfly baby tee` (`brand` is None; card has the price and
+platform and no brand):
+
+```
+Channel your inner 2000s pop star with this dreamy Y2K Baby Tee — Butterfly Print, featuring the cutest pastel pink and purple graphics! Grab it right now on Depop for just $18.00 to complete your effortless throwback streetwear or edgy utility looks.
+```
+
+Criterion 5 — the two failing searches:
+
+```
+vintage graphic tee size L under $30
+- search_results: 5
+  - lst_006: size L, $24.0
+  - lst_033: size L, $19.0
+  - lst_015: size L, $26.0
+  - lst_014: size One Size (adjustable), $12.0
+  - lst_034: size One Size, $14.0
+
+sneakers size US 9 under $80
+[1] parse_query
+      in:  sneakers size US 9 under $80
+      out: {'description': 'sneakers 9', 'size': 'US', 'max_price': 80.0}
+- search_results: 2
+  - lst_035: size US 9, $20.0
+  - lst_019: size US 8, $48.0
 ```
 
 ---
@@ -228,13 +310,46 @@ that produced it:
 
 | #   | Criterion | Target | Verdict | How I decided |
 | --- | --------- | ------ | ------- | ------------- |
-| 1   |           |        |         |               |
-| 2   |           |        |         |               |
-| 3   |           |        |         |               |
-| 4   |           |        |         |               |
-| 5   |           |        |         |               |
+| 1   | Matching query completes all three tools | 4 of 5 | MET (5/5) | All five tries ended with `stopped early: no` and a non-empty fit card, with no crashes. |
+| 2   | Impossible query stops before tool 2 | 5 of 5 | MET (5/5) | All five stopped at `search_listings` with no outfit or fit card, and the message names keywords, size and max price to change. |
+| 3   | Searched item is the item every tool receives | 5 of 5 | MET (5/5) | In every try, `search_results[0]`, the selected item and the `item` in the `suggest_outfit` and `create_fit_card` trace inputs were all `lst_003`. |
+| 4   | Fit card states the right facts | 4 of 5 items, every try | MET (5/5) | All 25 cards (5 items × 5 tries) were 2–4 sentences with the exact price (e.g. `$18.00`) and platform. None of the 15 cards for unbranded items named a brand. Checked with a script against `data/listings.json`, then spot-read. |
+| 5   | Search respects size and price | 5 of 5 | MISSED (0/5) | Price held in all 25 searches. Size failed in 2 of the 5 searches, the same two in every try, so no try had all five clean. |
 
 **Diagnoses**
+
+**Criterion 5 missed in every try, in two places, both about size.** Price
+never failed: every result in all 25 searches was at or under the max. The
+failures are the same two searches every time, which fits: search doesn't call
+the model, so a wrong result is wrong every run.
+
+1. **Tool, `tools.py::_size_matches`: "One Size" matches every size.** `vintage
+   graphic tee size L under $30` returned a belt (`lst_014`, "One Size
+   (adjustable)") and a bucket hat (`lst_034`, "One Size"). My Tool Inventory
+   says One Size items match any size, so the tool did what its spec said. But
+   criterion 5 says every result must have the requested size *as a whole
+   token*, and "L" isn't one. The spec and the criterion disagree, and a user
+   who asked for a size L tee getting a belt sides with the criterion. They
+   only matched at all because "vintage" is in their style tags.
+2. **Loop, `agent.py::parse_query`: a two-word size gets cut in half.** The
+   regex `size\s+([a-z0-9./]+)` stops at the first space, so `size US 9` is
+   parsed as size `"US"` and the `9` ends up in the description
+   (`'sneakers 9'`). `_size_matches("US", "US 8")` is True, because "us" is a
+   token of "US 8", so a US 8 shoe came back for a US 9 search. The tool was
+   handed the wrong size. Search worked correctly on what it was given.
+
+**The pattern:** both failures happen where free-text sizes meet the data's
+messy size formats (`One Size (adjustable)`, `US 8.5`, `W30 L30`). Sizes that
+are one plain token, like `S`, `M` or `W28`, never failed. One fix covers both:
+treat the size as a whole phrase (parse everything after "size" up to "under"
+or the end, and stop letting One Size match a specific size request).
+
+**Criteria 1–4 were met 5/5, and honestly 1 and 4 were set low.** Criterion 1
+allowed a miss for keyword phrasing, but every scenario used words straight
+from the listings. Criterion 4 required only 4 of 5 cards per try, and all 25
+passed. I'd tighten criterion 4 to 5 of 5 cards per try, and add that the
+outfit names at least one piece from the wardrobe by its exact name, since that's
+the part of the model's output nothing currently checks.
 
 ---
 
