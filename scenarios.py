@@ -35,18 +35,37 @@ SCENARIOS = [
         "wardrobe": "empty",
         "criterion": None,
     },
-    # TODO: add what your criteria 3, 4 and 5 need.
-    #
-    # Set "criterion" to the number in criteria.md that the scenario tests.
-    # "criterion": None means a diagnostic run — useful to have, but it isn't
-    # one of your five, and run_eval.py marks it as such in the table.
-    #
-    # For a state criterion, any normal query works — what you're checking is
-    # what ends up in the session, not what the user typed.
-    #
-    # For a fit-card criterion, you probably want the SAME query listed more
-    # than once, or several different items, depending on what your criterion
-    # actually says.
+    {
+        # State: the item search picked must be the one both later tools get.
+        # Scored from the trace (item id at each step) and the session.
+        "name": "selected item reaches every tool",
+        "query": "oversized flannel shirt under $40",
+        "wardrobe": "example",
+        "criterion": 3,
+    },
+    # Fit card facts: five different items, two with a brand and three
+    # without, so an invented brand would show up.
+    {"name": "fit card: Levi's jeans (brand)", "query": "levi's 501 jeans",
+     "wardrobe": "example", "criterion": 4},
+    {"name": "fit card: baby tee (no brand)", "query": "butterfly baby tee",
+     "wardrobe": "example", "criterion": 4},
+    {"name": "fit card: Champion jacket (brand)", "query": "champion jacket",
+     "wardrobe": "example", "criterion": 4},
+    {"name": "fit card: cargo pants (no brand)", "query": "low-rise cargo pants",
+     "wardrobe": "example", "criterion": 4},
+    {"name": "fit card: bucket hat (no brand)", "query": "reversible bucket hat",
+     "wardrobe": "example", "criterion": 4},
+    # Search filters: five searches with both a size and a max price.
+    {"name": "filters: graphic tee size L under $30",
+     "query": "vintage graphic tee size L under $30", "wardrobe": "example", "criterion": 5},
+    {"name": "filters: y2k top size S under $25",
+     "query": "y2k top size S under $25", "wardrobe": "example", "criterion": 5},
+    {"name": "filters: flannel size M under $35",
+     "query": "flannel shirt size M under $35", "wardrobe": "example", "criterion": 5},
+    {"name": "filters: jacket size M under $60",
+     "query": "jacket size M under $60", "wardrobe": "example", "criterion": 5},
+    {"name": "filters: sneakers size US 9 under $80",
+     "query": "sneakers size US 9 under $80", "wardrobe": "example", "criterion": 5},
 ]
 
 WARDROBES = ("example", "empty")

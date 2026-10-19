@@ -170,6 +170,9 @@ I used Claude for the tool testing in Milestone 4.
 **Moment 2**
 I used also Claude for some of the manual testing in Milestone 5 for the loop.
 
+**Moment 3**
+I used Claude in unit 4 to trigger the failures in milestone 2. I traced it myself, though.
+
 <!-- ═══════════════════════ UNIT 4 — THE TEST ═══════════════════════
 
      Don't fill these in during unit 3.
@@ -293,10 +296,10 @@ calls the model.
 1. **Empty search** (`'sequined tuxedo size XXS under $3'`): stopped after
    `search_listings` with the message above. `fit_card` stayed None. No change needed.
 2. **Empty wardrobe** (`'flannel shirt size L' --empty-wardrobe`):
-   `suggest_outfit` gave general advice instead of crashing: *"Pair the olive
+   `suggest_outfit` gave general advice instead of crashing: _"Pair the olive
    canvas shacket with a classic white crewneck tee, well-fitted blue
    straight-leg jeans, and clean white canvas sneakers for an effortless,
-   everyday look…"* No change needed.
+   everyday look…"_ No change needed.
 3. **Model unavailable** (bad `GEMINI_API_KEY`, new query
    `'red plaid flannel for layering'`): the first run didn't hang or show a
    stack trace, but only because `app.py` caught the exception
