@@ -435,7 +435,11 @@ calls the model.
 instead of importing it (step [2] above). Nothing else changed. For both a
 matching query (10 results) and an empty one, the list that came back over MCP
 was equal, dict for dict, to the direct call, so the tool was already returning
-plain JSON-friendly values (dicts, lists, floats, and None for brand).
+plain JSON-friendly values (dicts, lists, floats, and None for brand). Across
+both eval runs (140 agent runs, every one searching over MCP) there were no
+MCP errors or crashes. The one known cost is speed: `mcp_client.call_tool`
+starts the server for every call, which its docstring says is slower than
+holding a connection open. I didn't time the difference.
 
 ---
 
@@ -536,6 +540,45 @@ with no retry.
 <!-- For each criterion still missed: what you'd do, and why you stopped where
      you did. "I ran out of time" is fine if it's true. Pretending nothing is
      left is not. -->
+
+**Criterion 5 (search respects size and price): MISSED, 0/5.** One search
+still fails every try: `vintage graphic tee size L under $30` returns a belt
+(`lst_014`, "One Size (adjustable)") and a bucket hat (`lst_034`, "One Size").
+`tools.py::_size_matches` lets One Size match any requested size, which my own
+Tool Inventory promised.
+
+- *What I'd do:* when the user gives a size, stop treating "One Size" as a
+  match, and update the Tool Inventory and the MCP description to say so. A
+  user who asks for a size L tee doesn't want accessories. I'd add
+  `assert not _size_matches("L", "One Size")` to the self-check in `tools.py`,
+  then rerun.
+- *Why I stopped:* the brief allows one change per round, and I spent it on
+  the parser bug (`US 9` read as `US`), which was an outright bug. The One
+  Size rule was a design decision written into my spec, so changing it
+  changes the tool's published contract, not just its code. That deserved its
+  own round.
+
+**Criterion 4 (fit card states the right facts): MISSED, 3/5 in the after
+run (5/5 before).** Every fit card that was written passed. Six were never
+written because the model service returned `503 UNAVAILABLE` ("high demand")
+during the run, and `generate.py` only retries rate limits (429), so one 503
+ends the run.
+
+- *What I'd do:* treat 503 as retryable in `generate.py`'s retry loop, with
+  the same backoff it already uses for 429, so a short spike costs a few
+  seconds instead of the fit card. My `ModelUnavailable` handler would still
+  catch a real outage after the retries run out. Then rerun the full test to
+  check criterion 4 comes back to 5/5 when the service is flaky.
+- *Why I stopped:* this failure showed up in the after run, so fixing it now
+  would be a second change in the same round, and the result would no longer
+  show what the parser fix did on its own. `generate.py` is also the shared
+  adapter every model call goes through, so I'd want a run of its own to check
+  the change doesn't hide a real outage behind long waits.
+
+**Not a criterion, but noticed:** a keyword search ranks by word overlap
+alone, so the belt and hat matched "vintage graphic tee" on the word "vintage"
+in their style tags. Even with the size fixed, a vaguer query can still bring
+back a different category of item.
 
 <!-- ═════════════════════════════════════════════════════════════════════
 
