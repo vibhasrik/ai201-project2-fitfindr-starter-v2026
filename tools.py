@@ -80,7 +80,7 @@ def search_listings(
     Test it from a terminal before you move on:
         python -c "from tools import search_listings; print(search_listings('graphic tee', max_price=30))"
     """
-    words = set(_tokens(description))
+    words = set(_tokens(description)) - _FILLER
     scored = []
     for listing in load_listings():
         if max_price is not None and listing["price"] > max_price:
@@ -94,6 +94,15 @@ def search_listings(
     # sorted() is stable, so ties keep their order in the data file.
     scored = sorted(scored, key=lambda pair: pair[0], reverse=True)
     return [listing for _, listing in scored[: config.SEARCH_RESULT_LIMIT]]
+
+
+# Words that appear in nearly every listing or query and say nothing about the
+# item. Without this, "looking for a tee" matches every listing containing "a".
+_FILLER = {
+    "a", "an", "the", "and", "or", "for", "with", "in", "on", "of", "to", "i",
+    "im", "me", "my", "is", "it", "looking", "want", "need", "some", "something",
+    "under", "size", "please", "find",
+}
 
 
 def _tokens(text: str) -> list[str]:
@@ -228,4 +237,5 @@ if __name__ == "__main__":
     assert _size_matches("M", "S/M") and _size_matches("W30", "W30 L30")
     assert not _size_matches("L", "XL") and not _size_matches("S", "US 9")
     assert _size_matches("S", "One Size") and search_listings("zzzz") == []
+    assert search_listings("looking for a") == []
     print("tools.py self-check passed")

@@ -41,6 +41,14 @@
 
 <!-- Three or four sentences: what a user asks for, and what they get back. -->
 
+FitFindr takes a plain-language thrift request, like "vintage graphic tee under
+$30, size M", and searches 40 secondhand listings for the best keyword match
+within that size and price. It then suggests one or two outfits that pair the
+item with pieces from the user's wardrobe (or general styling advice if the
+wardrobe is empty), and writes a short caption the user could post, mentioning
+the item, its price and its platform. If nothing matches, it stops and says
+what to change, such as different keywords, another size or a higher max price.
+
 ---
 
 ## Tool Inventory
@@ -57,7 +65,7 @@
 
 ### `search_listings`
 
-- **What it does:** Filters `data/listings.json` by price and size, then ranks what's left by how many words of `description` appear in each listing's title, description and style tags.
+- **What it does:** Filters `data/listings.json` by price and size, then ranks what's left by how many words of `description` appear in each listing's title, description and style tags. Filler words ("a", "for", "looking", …) are ignored.
 - **Inputs:** `description` (str), `size` (str or None, None skips the size filter), `max_price` (float or None, inclusive, None skips the price filter). Size matches case-insensitively on whole tokens: the listing size is split on spaces, `/` and parentheses, so `"M"` matches `"S/M"` and `"M/L"` but `"L"` does not match `"XL"` and `"S"` does not match `"US 9"`. Listings sized "One Size" match any size.
 - **Returns:** A `list[dict]` of at most `config.SEARCH_RESULT_LIMIT` (10) listing dicts, highest score first (ties keep their order in the data file), each with `id`, `title`, `description`, `category`, `style_tags` (list), `size`, `condition`, `price` (float), `colors` (list), `brand` (str or None), `platform`.
 - **When it has nothing:** An empty list `[]`, never None and never an exception. Listings that match zero keywords are dropped, so a query with no word overlap also returns `[]`.
@@ -91,13 +99,13 @@
      The grader checks your code against what you claim here, so the file and
      function have to be real. -->
 
-**Branch rule:** If `search_listings` returns an empty list, put `"No listings matched that search. Try fewer keywords, a different size, or a higher max price."` in `session["error"]` and stop without calling `suggest_outfit`. Otherwise, take the first result as `session["selected_item"]` and go to `suggest_outfit`.
+**Branch rule:** If `search_listings` returns an empty list, put a message in `session["error"]` naming what the user could change (keywords, size, max price) and stop without calling `suggest_outfit`. Otherwise, take the first result as `session["selected_item"]` and go to `suggest_outfit`.
 
 **Where it lives:** `agent.py::run_agent`
 
-**How the query is parsed:** <!-- regex, string splitting, or asking the model — say which -->
+**How the query is parsed:** Regex, in `agent.py::parse_query`. `$30` (optionally after "under", "below", "less than" or "max") becomes `max_price` 30.0, and `size M` becomes `size` "M". Whatever is left is the `description`. Filler words like "looking for a" are ignored by `search_listings`, so they don't match every listing.
 
-**What moves through the session:** <!-- which fields, in what order -->
+**What moves through the session:** `query` → `parsed` (description, size, max_price) → `search_results` (the list from `search_listings`) → `selected_item` (`search_results[0]`) → `outfit_suggestion` (from `suggest_outfit`, which reads `selected_item` and `wardrobe` from the session) → `fit_card` (from `create_fit_card`, which reads `outfit_suggestion` and `selected_item`). On an empty search the run stops after `search_results`, with `error` set and `selected_item`, `outfit_suggestion` and `fit_card` left as None.
 
 ---
 
@@ -111,9 +119,18 @@
 **One full query**
 
 ```
-$ python app.py ask '...'
-
+$ python app.py ask 'looking for a vintage graphic tee under $30'
 ```
+
+Found: Y2K Baby Tee — Butterfly Print — $18.0 on depop
+
+Outfit: **Outfit 1:** Pair the Y2K Baby Tee with the baggy straight-leg jeans and the chunky white sneakers for a classic, effortless Y2K aesthetic. Layer the vintage black denim jacket on top to complete the look.
+
+**Outfit 2:** Style the baby tee tucked into the wide-leg khaki trousers, accented by the brown leather belt, and wear it with the black combat boots for a cool mix of vintage and cottagecore vibes. Throw on the black cropped zip hoodie if you need an extra layer.
+
+Fit card: Serving major Y2K energy with this adorable butterfly print baby tee, available now on Depop for just $18.00! Style it effortlessly with baggy jeans and a denim jacket for that classic turn-of-the-millennium look, or tuck it into khaki trousers with combat boots for a cool mix of vintage and cottagecore vibes.
+
+2 model calls this session, 468 prompt + 177 output tokens
 
 **The three tools, tested one at a time**
 
@@ -148,16 +165,10 @@ Channeling effortless off-duty streetwear energy with these medium wash Vintage 
      instead of an empty list, so I changed it" is the level we want. -->
 
 **Moment 1**
-
-- _What I asked for:_
-- _What came back:_
-- _What I changed:_
+I used Claude for the tool testing in Milestone 4.
 
 **Moment 2**
-
-- _What I asked for:_
-- _What came back:_
-- _What I changed:_
+I used also Claude for some of the manual testing in Milestone 5 for the loop.
 
 <!-- ═══════════════════════ UNIT 4 — THE TEST ═══════════════════════
 
