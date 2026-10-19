@@ -118,18 +118,22 @@ $ python app.py ask '...'
 **The three tools, tested one at a time**
 
 ```
-$ python -c "from tools import search_listings; print(search_listings('graphic tee', max_price=30))"
-
+$ python -c "from tools import search_listings; print([(x['id'], x['title'], x['size'], x['price']) for x in search_listings('graphic tee', max_price=30)])"
+[('lst_002', 'Y2K Baby Tee — Butterfly Print', 'S/M', 18.0), ('lst_006', 'Graphic Tee — 2003 Tour Bootleg Style', 'L', 24.0), ('lst_017', 'Mesh Long-Sleeve Top — Black', 'S/M', 15.0), ('lst_033', 'Vintage Band Tee — Faded Grey', 'L', 19.0), ('lst_011', 'Low-Rise Cargo Pants — Khaki', 'W29', 27.0), ('lst_015', 'Vintage Graphic Hoodie — Faded Black', 'L', 26.0)]
 ```
 
 ```
-$ python -c "from tools import suggest_outfit; ..."
+$ python -c "from tools import suggest_outfit; from utils.data_loader import get_example_wardrobe, load_listings; print(suggest_outfit(load_listings()[0], get_example_wardrobe()))"
+**Outfit 1: Casual Streetwear**
+Pair the vintage Levi's with the white ribbed tank top and chunky white sneakers, then layer on the vintage black denim jacket for a classic, effortless look. Cinch the waist with the brown leather belt and complete the outfit with the black crossbody bag.
 
+**Outfit 2: Cozy & Relaxed**
+Combine the medium wash jeans with the oversized grey crewneck sweatshirt and black combat boots for an easy, laid-back vibe. Accessorize with the brown leather belt to tie the look together.
 ```
 
 ```
-$ python -c "from tools import create_fit_card; ..."
-
+$ python -c "from tools import create_fit_card; from utils.data_loader import load_listings; print(create_fit_card('jeans and white sneakers', load_listings()[0]))"
+Channeling effortless off-duty streetwear energy with these medium wash Vintage Levi's 501 Jeans paired with fresh white sneakers. Snagged this classic denim staple for just $38.00 over on depop.
 ```
 
 ---
