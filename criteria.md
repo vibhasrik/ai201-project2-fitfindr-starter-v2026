@@ -29,6 +29,12 @@ tool calls and returns a fit card — in at least 4 of 5 tries.
      "my search is a plain keyword match and some phrasings will miss" is a
      real answer. -->
 
+My search is a plain keyword match, so a query worded differently from the
+listings (say "cargo pants" when the listing says "utility trousers") can come
+back empty even when a good item exists. 4 of 5 allows for one phrasing miss
+like that; a crash or a missing fit card on a query that did match still counts
+as a fail.
+
 ---
 
 ## 2. An impossible query stops before the second tool
@@ -40,9 +46,13 @@ Given a query that matches no listings, the agent stops before calling
 <!-- Why is 5 of 5 reasonable here when criterion 1 isn't? What's different
      about this path? -->
 
+This path has no model and no ranking in it: an empty list either triggers the
+branch in `run_agent` or it doesn't. That's deterministic code, so anything
+less than 5 of 5 means the branch is broken, not unlucky.
+
 ---
 
-## 3. Something about state
+## 3. The searched item is the item every tool receives
 
 <!-- YOU WRITE THIS ONE.
 
@@ -54,15 +64,21 @@ Given a query that matches no listings, the agent stops before calling
      compares session["selected_item"] against what actually reached
      suggest_outfit is the shape you're after. -->
 
-
+In 5 of 5 tries, the `id` of `session["selected_item"]` is the same as the `id`
+of `session["search_results"][0]`, and the same `id` appears in the trace
+inputs of both `suggest_outfit` and `create_fit_card`.
 
 **Why this target:**
+
+Passing one dict through the session is plain code with no model involved, so
+it should never drift. Comparing `id`s rather than titles makes it a yes/no
+check: two listings can share a word in the title, but never an `id`.
 
 
 
 ---
 
-## 4. Something about the fit card
+## 4. The fit card states the right facts
 
 <!-- YOU WRITE THIS ONE.
 
@@ -75,15 +91,23 @@ Given a query that matches no listings, the agent stops before calling
      sentence? A card longer than a caption anyone would post? Any of those can
      be turned into a number. -->
 
-
+For 5 different items, at least 4 of the 5 fit cards are 2 to 4 sentences long
+and mention the item's exact price (e.g. `$18`) and its platform (e.g.
+`depop`). None of the 5 may mention a brand when the listing's `brand` is None.
 
 **Why this target:**
+
+The wording is supposed to change between runs, so I'm checking facts, not
+words. 4 of 5 because the model at temperature 0.9 sometimes rounds or drops
+the price, and that's worth catching without failing the whole criterion. The
+brand rule is 5 of 5 because a made-up brand is an invented fact, and most
+listings have no brand.
 
 
 
 ---
 
-## 5. Your choice
+## 5. Search respects size and price
 
 <!-- YOU WRITE THIS ONE TOO.
 
@@ -92,9 +116,17 @@ Given a query that matches no listings, the agent stops before calling
      search respects a price ceiling — anything, as long as it names a number
      or an observable outcome. -->
 
-
+For 5 searches with a size and a max price set, every returned listing is at or
+under the max price and has the requested size as a whole token. Example: a
+size `S` search returns no `US 9` shoes and no `XL` items. 5 of 5 searches.
 
 **Why this target:**
+
+`search_listings` doesn't call the model, so every result is either inside the
+filters or it isn't. The size data is messy (`S/M`, `W30 L30`, `US 8.5`,
+`XL (oversized)`), and a plain substring check would let `S` match `US 9`. One
+wrong-size result makes the search look broken to a user, so I'm not allowing
+any.
 
 
 
