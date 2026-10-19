@@ -187,7 +187,8 @@ def parse_query(query: str) -> dict:
         max_price = float(price.group(1))
         text = text.replace(price.group(0), " ")
     size = None
-    size_match = re.search(r"\bsize\s+([a-z0-9./]+)", text, re.I)
+    # A size can be two words when the second has a digit: "US 9", "W30 L30".
+    size_match = re.search(r"\bsize\s+([a-z0-9./]+(?:\s+[a-z]*\d[a-z0-9.]*)?)", text, re.I)
     if size_match:
         size = size_match.group(1).upper()
         text = text.replace(size_match.group(0), " ")
@@ -224,6 +225,9 @@ def _show(session: dict) -> None:
 
 if __name__ == "__main__":
     from utils.data_loader import get_example_wardrobe
+
+    assert parse_query("sneakers size US 9 under $80") == {
+        "description": "sneakers", "size": "US 9", "max_price": 80.0}
 
     print("=== A query the data can match ===")
     _show(run_agent(

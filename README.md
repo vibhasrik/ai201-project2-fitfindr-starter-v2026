@@ -446,24 +446,88 @@ plain JSON-friendly values (dicts, lists, floats, and None for brand).
 
      `python run_eval.py --label after` -->
 
-**What I changed:**
+**What I changed:** one regex in `agent.py::parse_query`. The size pattern
+used to stop at the first space; it now keeps a second word when that word has
+a digit in it, so `size US 9` parses as `"US 9"` (and `size W30 L30` as
+`"W30 L30"`, `size US 8.5` as `"US 8.5"`). Single-word sizes like `M` parse the
+same as before. Nothing else changed.
 
-**Which failure it was meant to fix:**
+```python
+# before
+size_match = re.search(r"\bsize\s+([a-z0-9./]+)", text, re.I)
+# after
+size_match = re.search(r"\bsize\s+([a-z0-9./]+(?:\s+[a-z]*\d[a-z0-9.]*)?)", text, re.I)
+```
+
+**Which failure it was meant to fix:** diagnosis 2 under criterion 5, where
+`sneakers size US 9 under $80` was parsed as size `"US"`, which matched a US 8
+shoe. I left diagnosis 1 (One Size matching every size) alone on purpose to
+keep this to one change, so I expected criterion 5 to stay MISSED.
 
 ### Run Log — After
 
+From `results/run_2026-10-19_0032_after.md`, written by `run_eval.py::main`,
+same 14 scenarios, 5 tries each, caching off.
+
 | Criterion | Target | Try 1 | Try 2 | Try 3 | Try 4 | Try 5 | Verdict |
 | --------- | ------ | ----- | ----- | ----- | ----- | ----- | ------- |
-| 1.        |        |       |       |       |       |       |         |
-| 2.        |        |       |       |       |       |       |         |
-| 3.        |        |       |       |       |       |       |         |
-| 4.        |        |       |       |       |       |       |         |
-| 5.        |        |       |       |       |       |       |         |
+| 1. Matching query completes all three tools | 4 of 5 | PASS | PASS | PASS | PASS | PASS | MET (5/5) |
+| 2. Impossible query stops before tool 2 | 5 of 5 | PASS | PASS | PASS | PASS | PASS | MET (5/5) |
+| 3. Searched item is the item every tool receives | 5 of 5 | PASS | PASS | PASS | PASS | PASS | MET (5/5) |
+| 4. Fit card states the right facts (≥4 of 5 items, no invented brand) | 5 of 5 tries | PASS | PASS | FAIL | PASS | FAIL | MISSED (3/5) |
+| 5. Search respects size and price (all 5 searches) | 5 of 5 | FAIL | FAIL | FAIL | FAIL | FAIL | MISSED (0/5) |
+
+Before and after, side by side:
+
+| Criterion | Before | After |
+| --- | --- | --- |
+| 1. Matching query completes | MET (5/5) | MET (5/5) |
+| 2. Impossible query stops early | MET (5/5) | MET (5/5) |
+| 3. Same item reaches every tool | MET (5/5) | MET (5/5) |
+| 4. Fit card facts | MET (5/5) | **MISSED (3/5)** |
+| 5. Size and price respected | MISSED (0/5), 2 bad searches per try | MISSED (0/5), **1** bad search per try |
 
 **Did it help, and how do I know:**
 
-<!-- If it made things worse, say that. Honestly reported, that earns full
-     credit and is more interesting than one that worked. -->
+The fix did what it was meant to, but no verdict improved, and one criterion
+got worse for a reason unrelated to the change.
+
+- **Criterion 5: the targeted search is fixed.** The trace shows the size now
+  reaching the tool whole, and the US 8 shoe is gone:
+
+  ```
+  [1] parse_query
+        in:  sneakers size US 9 under $80
+        out: {'description': 'sneakers', 'size': 'US 9', 'max_price': 80.0}
+  - search_results: 1
+    - lst_035: size US 9, $20.0
+  ```
+
+  It passed in all 5 tries, down from 2 failing searches per try to 1. The
+  criterion is still MISSED because `vintage graphic tee size L under $30`
+  still returns the One Size belt and hat every time. That's diagnosis 1,
+  which I didn't touch, as expected.
+- **Criterion 4 dropped from 5/5 to 3/5, and my change didn't cause it.**
+  Six of the 25 fit-card runs have no fit card at all (baby tee tries 3, 4
+  and 5; bucket hat tries 1, 3 and 5), and the run log says why:
+
+  ```
+  - stopped early: yes — Found Y2K Baby Tee — Butterfly Print ($18 on depop), but couldn't reach the model to run create_fit_card. Couldn't reach the model: 503 UNAVAILABLE. {'error': {'code': 503, 'message': 'This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.', 'status': 'UNAVAILABLE'}} Then run the same query again.
+  ```
+
+  The model service was overloaded during this run (7 of 65 agent runs hit
+  503). That puts the failure in the model's output: it never arrived. My
+  `ModelUnavailable` handler did its job, with no crashes and a message saying
+  what broke, but a stopped run has no card to score. Every card that *was*
+  written still had the right price, platform and length, and none invented a
+  brand. I'm reporting the miss rather than rerunning until it passes. It also
+  shows a gap in retries: `generate.py` retries rate limits (429) up to
+  `MAX_RETRIES` times but raises immediately on anything else, so one 503 ends
+  the run, even though the error itself says the spike is "usually temporary".
+
+So the change helped exactly where the diagnosis said it would, one search out
+of two, and the after run found a new weakness: a 503 from the model ends the run
+with no retry.
 
 ---
 
