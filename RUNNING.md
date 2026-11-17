@@ -119,39 +119,87 @@ Useful flags on `ask`:
 
 ---
 
-## Running it somewhere else — **unit 9**
+## Running it hosted (Render)
 
-Everything above exits when the command finishes. A host has nothing to keep
-running, so before you can deploy this you need something that stays up.
-`serve.py` is that: the same `run_agent()`, behind two HTTP routes.
-
-On your machine:
+**Live URL:** `RENDER_URL` (free tier: the first request after ~15 idle
+minutes takes about a minute while it wakes up)
 
 ```bash
-python serve.py
-curl -X POST http://localhost:5000/ask \
+curl RENDER_URL/health
+curl -X POST RENDER_URL/ask \
   -H 'Content-Type: application/json' \
   -d '{"query": "vintage graphic tee under $30"}'
+curl 'RENDER_URL/logs?n=10'          # read the run log back
 ```
 
-On a host, the start command is:
+### How it got there
+
+A Render **Web Service** connected to this GitHub repo, branch `main`. Every
+push to `main` redeploys it. Settings in the Render dashboard:
+
+| Setting | Value | Why |
+|---|---|---|
+| Runtime | Python 3 | Version comes from `.python-version` (3.13.5). Not 3.14, which the pinned packages don't support |
+| Build command | `pip install -r requirements.txt` | |
+| Start command | `gunicorn serve:app --timeout 400` | Default sync worker, never `-k gevent` (it breaks every MCP call). `--timeout 400` because gunicorn kills a worker after 30s by default, and a run that's retrying a 503 can legitimately take minutes: 2 model calls × 5 attempts × 30s timeout, plus backoff |
+| Instance type | Free | |
+| Env var `GEMINI_API_KEY` | your key | Set in the dashboard, never committed |
+| Env var `AI201_CACHE` | `0` | Every run is a real model call, so the logged tokens and latency are real costs |
+
+Render sets `PORT` itself; gunicorn reads it.
+
+### Routes
+
+| Route | What it does |
+|---|---|
+| `POST /ask` | `{"query": "...", "wardrobe": {...}}`, wardrobe optional. Returns the session dict; check `error` first |
+| `GET /health` | `{"status": "ok"}` if it's awake |
+| `GET /logs?n=20` | The last `n` run records from `logs/runs.jsonl`, oldest first |
+
+### The run log
+
+Every `/ask` request appends one JSON line to `logs/runs.jsonl` and prints the
+same line to stdout (so it's also in Render's **Logs** tab). Rejected requests,
+stopped runs and crashes get a line too.
+
+| Field | Meaning |
+|---|---|
+| `ts` | When the request finished |
+| `query` | The input |
+| `status` | `ok`, `stopped` (run ended early with an error message), `bad_request` (400), or `crash` (500) |
+| `stopped_at` | The step that stopped it: `parse_query`, `search_listings`, `suggest_outfit` or `create_fit_card` |
+| `item` | The listing id that was selected |
+| `output` | The fit card, or null |
+| `model_calls` | Model call attempts, retries included |
+| `retries` | How many of those were retries after a 503/429/timeout |
+| `prompt_tokens`, `output_tokens` | Tokens the service reported for this request |
+| `latency_ms` | Wall-clock time for the whole request, including waiting for the lock |
+| `error` | `session["error"]`, or the exception for a crash |
+
+### Known limits
+
+- **The log file is wiped on every redeploy and restart.** Render's free disk
+  isn't persistent. Render's Logs tab keeps the stdout copy for a while
+  longer. The entries pasted in the README were copied out of `/logs`.
+- **One request at a time.** A second request waits for the first. This is on
+  purpose, and the reasons are in `serve.py`.
+- **The session request budget is per process** (300 model calls,
+  `SESSION_REQUEST_BUDGET`). A server that stays up past ~150 runs would start
+  failing with `QuotaGuard`, logged as `crash`. The free tier sleeps after 15
+  idle minutes, and sleeping resets the count.
+
+### Running the server on your own machine instead
+
+After the setup at the top of this file:
 
 ```bash
-gunicorn serve:app
+python serve.py                                    # Flask dev server on :5000
+# or exactly what Render runs:
+PORT=5000 gunicorn serve:app --timeout 400 --bind 0.0.0.0:5000
 ```
 
-| Thing | What it means |
-|---|---|
-| `PORT` | The host tells your app which port to listen on by setting this. Both `serve.py` and `gunicorn` read it, and `serve.py` falls back to `5000` on your machine. Don't hard-code a port |
-| `POST /ask` | `{"query": "...", "wardrobe": {...}}` — wardrobe optional. Returns the session dict, `error` and all |
-| `GET /health` | Says `ok` if the app is awake |
-| It answers one request at a time | On purpose. A second request waits for the first to finish, and prints `[serve] another request is still running` while it waits. An MCP tool call starts a whole second Python process, and the free tier's 512 MB has no room for two of those at once — and `generate.py`'s rate-limit counting assumes one caller. The reasoning is written out in `serve.py` |
-| `gunicorn serve:app`, exactly | Not `-k gevent`, not `-k eventlet`, not wrapped for uvicorn. `mcp_client.call_tool` uses `asyncio.run()`, which won't start inside a running event loop, so an async worker breaks **every** MCP call — and only once you've deployed it |
-| The first request is slow | The free tier puts your app to sleep after about fifteen minutes of nothing. The next request wakes it up and waits for it — around a minute. Not a bug, and worth knowing before you demo it |
-
-`serve.py` ships with **no logging and no timing in it**, on purpose. You add
-that yourself in the follow-along, before you deploy — instrumenting first is
-the point of the session.
+Then use the same `curl` commands with `http://localhost:5000` in place of the
+URL. The log lands in `logs/runs.jsonl` (gitignored).
 
 ---
 
