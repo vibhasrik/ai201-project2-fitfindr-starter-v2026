@@ -47,6 +47,7 @@ def new_session(query: str, wardrobe: dict) -> dict:
         "outfit_suggestion": None,   # what suggest_outfit returned
         "fit_card": None,            # what create_fit_card returned
         "error": None,               # set when the run ended early
+        "stopped_at": None,          # the step that set error, e.g. "search_listings"
     }
 
 
@@ -112,6 +113,14 @@ def run_agent(query: str, wardrobe: dict) -> dict:
     session["parsed"] = parse_query(query)
     trace.step("parse_query", inputs=query, returned=str(session["parsed"]))
 
+    # Nothing to search for ("", "   ", or only "$30"): stop before search runs.
+    if not session["parsed"]["description"]:
+        session["error"] = (
+            "Tell me what you're looking for, e.g. 'vintage graphic tee under $30'."
+        )
+        session["stopped_at"] = "parse_query"
+        return session
+
     # Each pass runs one tool, then looks at the session to pick the next one.
     next_step = "search_listings"
     count = 0
@@ -130,6 +139,7 @@ def run_agent(query: str, wardrobe: dict) -> dict:
                 # THE BRANCH: nothing found means stop here, before suggest_outfit.
                 if not session["search_results"]:
                     session["error"] = _no_results_message(parsed)
+                    session["stopped_at"] = "search_listings"
                     trace.step("search_listings (MCP)", inputs=str(parsed), returned=[],
                                note="branch: empty, stopping")
                     next_step = None
@@ -166,9 +176,10 @@ def run_agent(query: str, wardrobe: dict) -> dict:
         item = session["selected_item"]
         session["error"] = (
             f"Found {item['title']} (${item['price']:g} on {item['platform']}), "
-            f"but couldn't reach the model to run {next_step}. {exc} "
+            f"but {next_step} failed. {exc} "
             f"Then run the same query again."
         )
+        session["stopped_at"] = next_step
         trace.step(next_step, returned=None, note="model unavailable, stopping")
 
     return session
@@ -228,6 +239,9 @@ if __name__ == "__main__":
 
     assert parse_query("sneakers size US 9 under $80") == {
         "description": "sneakers", "size": "US 9", "max_price": 80.0}
+    for blank in ["", "   ", "under $30"]:
+        s = run_agent(blank, get_example_wardrobe())
+        assert s["stopped_at"] == "parse_query" and s["search_results"] == [], blank
 
     print("=== A query the data can match ===")
     _show(run_agent(
