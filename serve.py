@@ -27,12 +27,14 @@ web server has to be. The reason is worth reading before you deploy: see the
 note above `_one_at_a_time` below — it also decides which gunicorn worker you
 can use.
 
-Every request to /ask prints ONE JSON line to stdout (see `_log`): the query,
-status, where it stopped, model calls, retries and latency. A host captures
-stdout, so that line is the log.
+Every request to /ask writes ONE JSON line (see `_log`) to logs/runs.jsonl and
+to stdout: input, output, status, where it stopped, model calls, retries,
+tokens and latency. Failures and rejected requests get a line too.
+`GET /logs?n=20` reads the file back, since the free host has no shell.
 """
 
 import json
+import logging
 import os
 import sys
 import threading
@@ -93,9 +95,28 @@ app = Flask(__name__)
 _one_at_a_time = threading.Lock()
 
 
+LOG_FILE = config.ROOT / "logs" / "runs.jsonl"
+LOG_FILE.parent.mkdir(exist_ok=True)
+_logger = logging.getLogger("fitfindr.runs")
+_logger.setLevel(logging.INFO)
+_logger.propagate = False
+for _handler in (logging.FileHandler(LOG_FILE), logging.StreamHandler(sys.stdout)):
+    _logger.addHandler(_handler)
+
+
 def _log(**fields) -> None:
-    """One request, one JSON line on stdout."""
-    print(json.dumps({"ts": time.strftime("%Y-%m-%dT%H:%M:%S"), **fields}), flush=True)
+    """One request, one JSON line, in the file and on stdout."""
+    # ponytail: the host's disk is wiped on redeploy/restart; ship to a log service if history matters.
+    record = {"ts": time.strftime("%Y-%m-%dT%H:%M:%S%z"), **fields}
+    _logger.info(json.dumps(record, ensure_ascii=False))
+
+
+@app.get("/logs")
+def logs():
+    """The last n log records (default 20), oldest first."""
+    n = request.args.get("n", default=20, type=int)
+    lines = LOG_FILE.read_text().splitlines()[-n:] if LOG_FILE.exists() else []
+    return jsonify([json.loads(line) for line in lines])
 
 
 @app.get("/health")
@@ -118,7 +139,8 @@ def ask():
     payload = request.get_json(silent=True) or {}
     query = (payload.get("query") or "").strip() if isinstance(payload, dict) else ""
     if not query:
-        _log(query=query, status="bad_request", latency_ms=0)
+        _log(query=query, status="bad_request", stopped_at=None, output=None,
+             error="no 'query' field", latency_ms=0)
         # 400 rather than a stack trace: the caller can act on this one.
         return jsonify({"error": "Send JSON with a 'query' field, e.g. "
                                  '{"query": "vintage graphic tee under $30"}'}), 400
@@ -150,12 +172,14 @@ def ask():
     with _one_at_a_time:
         # Counters are module globals; under the lock the difference is this request's.
         calls_before, retries_before = generate.call_count(), generate.retry_count()
+        tokens_before = generate.token_counts()
         try:
             session = run_agent(query, wardrobe)
         except Exception as exc:  # noqa: BLE001 — a 500 with a sentence beats a hang
             failure = f"{type(exc).__name__}: {exc}"
         model_calls = generate.call_count() - calls_before
         retries = generate.retry_count() - retries_before
+        tokens = {k: v - tokens_before[k] for k, v in generate.token_counts().items()}
 
     if failure is not None:
         status, stopped_at, error, item = "crash", None, failure, None
@@ -164,7 +188,9 @@ def ask():
         stopped_at, error = session["stopped_at"], session["error"]
         item = (session["selected_item"] or {}).get("id")
     _log(query=query, status=status, stopped_at=stopped_at, item=item,
+         output=session["fit_card"] if session else None,
          model_calls=model_calls, retries=retries,
+         prompt_tokens=tokens["prompt"], output_tokens=tokens["output"],
          latency_ms=round((time.monotonic() - started) * 1000), error=error)
 
     # Outside the lock: building a response is not work the next caller should
