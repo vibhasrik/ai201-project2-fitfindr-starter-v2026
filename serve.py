@@ -27,15 +27,16 @@ web server has to be. The reason is worth reading before you deploy: see the
 note above `_one_at_a_time` below — it also decides which gunicorn worker you
 can use.
 
-⚠️ There is deliberately NO logging, NO timing and NO request counting in this
-file. That is unit 9's follow-along: you instrument this yourself, first, and
-then deploy it. A structured log you were handed teaches you nothing about
-what belongs in one — and the timing field is the one everybody skips.
+Every request to /ask prints ONE JSON line to stdout (see `_log`): the query,
+status, where it stopped, model calls, retries and latency. A host captures
+stdout, so that line is the log.
 """
 
+import json
 import os
 import sys
 import threading
+import time
 
 # config first, and before anything that talks to the model: it loads your .env
 # and fixes the Windows console encoding for every module that imports it.
@@ -43,6 +44,7 @@ import config  # noqa: F401
 
 from flask import Flask, jsonify, request
 
+import generate
 from agent import run_agent
 from utils.data_loader import get_example_wardrobe
 
@@ -91,6 +93,11 @@ app = Flask(__name__)
 _one_at_a_time = threading.Lock()
 
 
+def _log(**fields) -> None:
+    """One request, one JSON line on stdout."""
+    print(json.dumps({"ts": time.strftime("%Y-%m-%dT%H:%M:%S"), **fields}), flush=True)
+
+
 @app.get("/health")
 def health():
     """Is the server awake? A host pings something like this to find out."""
@@ -107,9 +114,11 @@ def ask():
                                                 example wardrobe the CLI uses.
     Out:  the session dict from run_agent(), as JSON.
     """
+    started = time.monotonic()
     payload = request.get_json(silent=True) or {}
-    query = (payload.get("query") or "").strip()
+    query = (payload.get("query") or "").strip() if isinstance(payload, dict) else ""
     if not query:
+        _log(query=query, status="bad_request", latency_ms=0)
         # 400 rather than a stack trace: the caller can act on this one.
         return jsonify({"error": "Send JSON with a 'query' field, e.g. "
                                  '{"query": "vintage graphic tee under $30"}'}), 400
@@ -139,10 +148,24 @@ def ask():
     failure = None
     session = None
     with _one_at_a_time:
+        # Counters are module globals; under the lock the difference is this request's.
+        calls_before, retries_before = generate.call_count(), generate.retry_count()
         try:
             session = run_agent(query, wardrobe)
         except Exception as exc:  # noqa: BLE001 — a 500 with a sentence beats a hang
             failure = f"{type(exc).__name__}: {exc}"
+        model_calls = generate.call_count() - calls_before
+        retries = generate.retry_count() - retries_before
+
+    if failure is not None:
+        status, stopped_at, error, item = "crash", None, failure, None
+    else:
+        status = "stopped" if session["error"] else "ok"
+        stopped_at, error = session["stopped_at"], session["error"]
+        item = (session["selected_item"] or {}).get("id")
+    _log(query=query, status=status, stopped_at=stopped_at, item=item,
+         model_calls=model_calls, retries=retries,
+         latency_ms=round((time.monotonic() - started) * 1000), error=error)
 
     # Outside the lock: building a response is not work the next caller should
     # be waiting on.
