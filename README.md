@@ -580,6 +580,35 @@ alone, so the belt and hat matched "vintage graphic tee" on the word "vintage"
 in their style tags. Even with the size fixed, a vaguer query can still bring
 back a different category of item.
 
+---
+
+## The Shape
+
+**B: Harden against failure.** FitFindr works when the model answers, but the
+unit 4 after-run showed what happens when it doesn't. 7 of 65 runs hit
+`503 UNAVAILABLE`. `generate.py::generate` only retries 429s, so a single
+temporary 503 ended the run with no fit card. I'm making the bad path survive
+these cases. A 503 or a timeout gets the same backoff-and-retry that 429
+already gets, and a call that hangs gets a hard timeout instead of blocking
+forever. When the model returns an empty response, the run stops and says so
+in `session["error"]` rather than passing `""` on to the next tool. An empty
+or whitespace-only query is turned away before search runs. Every one of
+these cases still ends in a clear `session["error"]`, never a crash. As every
+shape requires, it also runs from `serve.py` with a structured log line per
+request (query, status, which tool it stopped at, retries, latency), so the
+failures show up in numbers instead of scrollback.
+
+**Out of scope:**
+
+- **Not changing the One Size rule** in `tools.py::_size_matches`. It's the
+  known criterion 5 miss, but it's a change to the search contract, not a
+  failure-handling one.
+- **Not improving ranking or adding a category filter.** The belt and hat
+  matching "vintage" is a relevance problem, not a failure path.
+- **Not adding a fallback model, caching for availability, or a UI.** Retries
+  plus a clear error are enough. A second provider would double the surface
+  I have to test.
+
 <!-- ═════════════════════════════════════════════════════════════════════
 
      SUBMISSION CHECKLIST — unit 3
