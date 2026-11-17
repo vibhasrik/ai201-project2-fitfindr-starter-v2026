@@ -17,12 +17,19 @@ From inside this repo after you've forked and cloned it:
 **macOS / Linux**
 
 ```bash
-python3 -m venv .venv
+python3.13 --version          # must print 3.13.x — see below if it doesn't
+python3.13 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env          # then paste your key into .env
 python test.py
 ```
+
+> **Use `python3.13`, not `python3`.** On a current Mac, `python3` is 3.14,
+> and the venv it builds fails `test.py` ("The pinned packages do not support
+> 3.14 yet"). If `python3.13` isn't found, install it with
+> `brew install python@3.13` or `pyenv install 3.13.5`. With pyenv, the
+> repo's `.python-version` file selects it automatically.
 
 **Windows (PowerShell)**
 
