@@ -18,7 +18,9 @@ What this does for you:
   • Stops if a session makes an unreasonable number of calls, rather than
     silently draining your day's allowance. A runaway agent loop is the
     classic way to do that.
-  • Retries when the service says you're going too fast.
+  • Retries when the service says you're going too fast, is overloaded
+    (503/500), or doesn't answer within config.REQUEST_TIMEOUT_S.
+  • Treats an empty answer as a failure instead of passing "" along.
   • Returns a readable message when the model can't be reached, instead of a
     stack trace. Unit 4 Milestone 2 has you trigger exactly that on purpose.
   • Counts your calls and the tokens they used, so quota — and cost — are
@@ -39,6 +41,7 @@ import config
 _call_times: list[float] = []
 _session_calls = 0
 _cache_hits = 0
+_retries = 0
 _prompt_tokens = 0
 _output_tokens = 0
 _client = None
@@ -152,6 +155,11 @@ def usage() -> str:
     )
 
 
+def retry_count() -> int:
+    """How many retries this session has made, across every call."""
+    return _retries
+
+
 def call_count() -> int:
     return _session_calls
 
@@ -253,7 +261,13 @@ def _get_client():
                 "Copy .env.example to .env and paste your key in, then try "
                 "again. `python test.py` will confirm it's working."
             )
-        _client = genai.Client(api_key=key)
+        from google.genai import types
+
+        # Without a timeout a stuck call blocks the run (and serve.py's lock) forever.
+        _client = genai.Client(
+            api_key=key,
+            http_options=types.HttpOptions(timeout=config.REQUEST_TIMEOUT_S * 1000),
+        )
     return _client
 
 
@@ -281,7 +295,7 @@ def generate(
     Every call in this course goes through here. If you need to change how the
     model is called, change it in this one place.
     """
-    global _session_calls, _cache_hits
+    global _session_calls, _cache_hits, _retries
 
     use_cache = cache and config.CACHE_ENABLED
     temperature = config.TEMPERATURE if temperature is None else temperature
@@ -315,32 +329,56 @@ def generate(
             response = client.models.generate_content(**kwargs)
             _record_tokens(response)
             text = (response.text or "").strip()
+            if not text:
+                # Don't pass "" on to the next tool, and don't cache it.
+                raise ModelUnavailable(
+                    "The model answered with an empty response, so there was "
+                    "nothing to show."
+                )
 
             if use_cache:
                 _cache_write(key, text)
             return text
 
+        except ModelUnavailable:
+            raise
         except Exception as exc:  # noqa: BLE001 — surfaced below
             last_error = exc
-            message = str(exc).lower()
-            rate_limited = (
-                "429" in message
-                or "resource" in message and "exhaust" in message
-                or "rate" in message and "limit" in message
-            )
-            if not rate_limited:
+            if not _is_retryable(exc):
                 raise ModelUnavailable(_explain(exc)) from exc
+            if attempt + 1 == config.MAX_RETRIES:
+                break  # no point waiting after the last attempt
+            _retries += 1
             backoff = _retry_delay(exc, attempt)
             print(
-                f"  [rate limit] service pushed back. Waiting {backoff:.0f}s "
-                f"(attempt {attempt + 1} of {config.MAX_RETRIES}). This is "
-                f"the limiter doing its job, not a bug.",
+                f"  [retry] {_short(exc)}. Waiting {backoff:.0f}s "
+                f"(attempt {attempt + 1} of {config.MAX_RETRIES}).",
                 file=sys.stderr,
                 flush=True,
             )
             time.sleep(backoff)
 
-    raise RuntimeError(
-        f"Still rate limited after {config.MAX_RETRIES} attempts. Wait a "
-        f"minute and try again — your key is fine.\nLast error: {last_error}"
+    # ModelUnavailable, not RuntimeError, so the agent's handler catches it.
+    raise ModelUnavailable(
+        f"Still failing after {config.MAX_RETRIES} attempts. "
+        f"{_explain(last_error)}"
     )
+
+
+def _is_retryable(exc: Exception) -> bool:
+    """Rate limits, overloads and timeouts are temporary; a bad key is not."""
+    # The type name too: an httpx ReadTimeout can have an empty message.
+    message = f"{type(exc).__name__} {exc}".lower()
+    return (
+        "429" in message
+        or "resource" in message and "exhaust" in message
+        or "rate" in message and "limit" in message
+        or "503" in message or "unavailable" in message or "overloaded" in message
+        or "500" in message or "internal" in message
+        or "timeout" in message or "timed out" in message or "deadline" in message
+    )
+
+
+def _short(exc: Exception) -> str:
+    """One line naming what went wrong, for the retry note."""
+    return f"{type(exc).__name__}: {str(exc).splitlines()[0][:100]}" if str(exc) else type(exc).__name__

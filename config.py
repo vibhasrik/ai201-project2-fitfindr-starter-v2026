@@ -85,6 +85,8 @@ MODEL = os.getenv("AI201_MODEL", "gemini-3.5-flash-lite")
 REQUESTS_PER_MINUTE = 15
 SESSION_REQUEST_BUDGET = 300
 MAX_RETRIES = 5
+# A model call that hasn't answered in this long is treated as failed and retried.
+REQUEST_TIMEOUT_S = 30
 
 CACHE_DIR = ROOT / ".cache"
 
