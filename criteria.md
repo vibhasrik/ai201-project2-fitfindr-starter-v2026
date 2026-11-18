@@ -218,6 +218,15 @@ slow but real answers (one live run took 20 s). It has to stay under
 gunicorn's `--timeout 400`, or the worker is killed and no log line is
 written.
 
+> **Tightened in Milestone 6:** When the model never answers, `/ask` returns
+> a stopped session within **75 seconds**. 5 of 5 tries.
+>
+> **Why tightened:** 180 s was MET 15 of 15 times (165.6 s every try), so the
+> target was set to my design, not to the user. Nobody waits almost three
+> minutes for an error. 75 s allows one 30 s timeout, one retry for a blip,
+> and margin. Going lower would mean cutting `REQUEST_TIMEOUT_S`, and real
+> calls on Render have taken up to ~17 s.
+
 ---
 
 ## 4. Bad input is rejected before any model call

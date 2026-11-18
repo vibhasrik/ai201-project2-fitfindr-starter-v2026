@@ -25,6 +25,8 @@ from types import SimpleNamespace as NS
 import config
 
 TRIES = 5
+# Criterion 3's limit. 180 s in Milestone 5; tightened to 75 s in Milestone 6.
+C3_LIMIT_S = 75
 LIVE_URL = "https://ai201-fitfindr.onrender.com"
 QUERY = "vintage graphic tee under $30"
 
@@ -117,7 +119,7 @@ def run_local(out):
         generate._call_times.clear()
         r, secs, log = ask({"query": QUERY})
         s = r.get_json()
-        ok = r.status_code == 200 and bool(s.get("error")) and secs < 180
+        ok = r.status_code == 200 and bool(s.get("error")) and secs < C3_LIMIT_S
         passes += ok
         evidence.append((ok, {**log, "client_seconds": round(secs, 1)}))
         print(f"  c3 try {i + 1}: {secs:.1f}s {ok}", flush=True)

@@ -310,6 +310,7 @@ def generate(
     _check_budget()
 
     last_error: Exception | None = None
+    timeouts = 0
     for attempt in range(config.MAX_RETRIES):
         _wait_for_slot()
         try:
@@ -346,6 +347,13 @@ def generate(
             last_error = exc
             if not _is_retryable(exc):
                 raise ModelUnavailable(_explain(exc)) from exc
+            # A timeout already cost REQUEST_TIMEOUT_S. Retry it once (could be
+            # a blip), but a second one means the model is hung: stop, don't
+            # spend 5 x 30s finding that out.
+            if _is_timeout(exc):
+                timeouts += 1
+                if timeouts >= 2:
+                    break
             if attempt + 1 == config.MAX_RETRIES:
                 break  # no point waiting after the last attempt
             _retries += 1
@@ -360,9 +368,14 @@ def generate(
 
     # ModelUnavailable, not RuntimeError, so the agent's handler catches it.
     raise ModelUnavailable(
-        f"Still failing after {config.MAX_RETRIES} attempts. "
+        f"Still failing after {attempt + 1} attempts. "
         f"{_explain(last_error)}"
     )
+
+
+def _is_timeout(exc: Exception) -> bool:
+    message = f"{type(exc).__name__} {exc}".lower()
+    return "timeout" in message or "timed out" in message or "deadline" in message
 
 
 def _is_retryable(exc: Exception) -> bool:
