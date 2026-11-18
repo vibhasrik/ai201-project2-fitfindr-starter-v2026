@@ -39,6 +39,7 @@ import os
 import sys
 import threading
 import time
+from pathlib import Path
 
 # config first, and before anything that talks to the model: it loads your .env
 # and fixes the Windows console encoding for every module that imports it.
@@ -95,7 +96,7 @@ app = Flask(__name__)
 _one_at_a_time = threading.Lock()
 
 
-LOG_FILE = config.ROOT / "logs" / "runs.jsonl"
+LOG_FILE = Path(os.getenv("AI201_LOG_FILE", config.ROOT / "logs" / "runs.jsonl"))
 LOG_FILE.parent.mkdir(exist_ok=True)
 _logger = logging.getLogger("fitfindr.runs")
 _logger.setLevel(logging.INFO)

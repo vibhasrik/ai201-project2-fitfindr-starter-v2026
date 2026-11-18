@@ -678,6 +678,88 @@ and about a minute when Render has to wake the app up.
 **Why runs vary:** most took 6–8 s. Two took 17–20 s. Run 1's extra time was
 its retry. Run 8 had no retry, so the model was just slow to answer.
 
+---
+
+## Run Log — Extension
+
+Three separate runs of `test_hardening.py`. Raw output:
+`results/hardening_run{1,2,3}_local.md` (criteria 1–4) and
+`results/hardening_run{1,2,3}_live.md` (criterion 5).
+
+| Criterion | Target | Run 1 | Run 2 | Run 3 | Verdict |
+|---|---|---|---|---|---|
+| 1. One 503 still gets a fit card | 5 of 5 | 5/5 | 5/5 | 5/5 | MET |
+| 2. Model keeps failing → clear stop, not a crash | 5 of 5 per failure type | 10/10 | 10/10 | 10/10 | MET |
+| 3. Hung model call returns within 180 s | 5 of 5 | 5/5 | 5/5 | 5/5 | MET |
+| 4. Bad input rejected with 0 model calls | 4 of 4 | 4/4 | 4/4 | 4/4 | MET |
+| 5. Every request leaves a complete log record | 20 of 20 | 20/20 | 20/20 | 20/20 | MET |
+
+**How each number was produced**
+
+- **Criteria 1–4:** `test_hardening.py::run_local`, through `serve.py`'s `/ask`
+  with Flask's test client, on my machine. Search is real (MCP). Model failures
+  are injected:
+  - Criteria 1–2 use a fake client that returns 503s or `""`. Backoff sleeps
+    are skipped, because these criteria are about outcome, not time.
+  - Criterion 3 uses the real genai client pointed at a local socket that never
+    answers, with the real 30 s timeout and real backoff.
+- **Criterion 5:** `test_hardening.py::run_live`, 20 real requests to
+  `https://ai201-fitfindr.onrender.com` (10 matching, 10 failing or rejected),
+  then the new records read back from `GET /logs`.
+- Every log line below was written by `serve.py::_log`.
+
+**Real output, run 1**
+
+*Criterion 1:* one 503, then success. `retries: 1`, and the card was still written.
+
+```
+PASS {"ts": "2026-11-18T13:06:58-0600", "query": "vintage graphic tee under $30", "status": "ok", "stopped_at": null, "item": "lst_002", "output": "A $18 tee on depop. So good.", "model_calls": 3, "retries": 1, "prompt_tokens": 0, "output_tokens": 0, "latency_ms": 738, "error": null}
+PASS {"ts": "2026-11-18T13:06:59-0600", "query": "vintage graphic tee under $30", "status": "ok", "stopped_at": null, "item": "lst_002", "output": "A $18 tee on depop. So good.", "model_calls": 3, "retries": 1, "prompt_tokens": 0, "output_tokens": 0, "latency_ms": 479, "error": null}
+```
+
+*Criterion 2:* 503 on all 5 attempts, then an empty response. Both stopped
+with the failing tool named.
+
+```
+PASS {"ts": "2026-11-18T13:07:01-0600", "query": "vintage graphic tee under $30", "status": "stopped", "stopped_at": "suggest_outfit", "item": "lst_002", "output": null, "model_calls": 5, "retries": 4, "prompt_tokens": 0, "output_tokens": 0, "latency_ms": 432, "error": "Found Y2K Baby Tee — Butterfly Print ($18 on depop), but suggest_outfit failed. Still failing after 5 attempts. Couldn't reach the model: 503 UNAVAILABLE Then run the same query again."}
+PASS {"ts": "2026-11-18T13:07:03-0600", "query": "vintage graphic tee under $30", "status": "stopped", "stopped_at": "create_fit_card", "item": "lst_002", "output": null, "model_calls": 2, "retries": 0, "prompt_tokens": 0, "output_tokens": 0, "latency_ms": 447, "error": "Found Y2K Baby Tee — Butterfly Print ($18 on depop), but create_fit_card failed. The model answered with an empty response, so there was nothing to show. Then run the same query again."}
+```
+
+*Criterion 3:* a hung model. Every try took 165.5–165.7 s, which matches the
+design worst case (5 × 30 s timeout + 15 s backoff).
+
+```
+PASS {"ts": "2026-11-18T13:09:51-0600", "query": "vintage graphic tee under $30", "status": "stopped", "stopped_at": "suggest_outfit", "item": "lst_002", "output": null, "model_calls": 5, "retries": 4, "prompt_tokens": 0, "output_tokens": 0, "latency_ms": 165501, "error": "Found Y2K Baby Tee — Butterfly Print ($18 on depop), but suggest_outfit failed. Still failing after 5 attempts. Couldn't reach the model: timed out Then run the same query again.", "client_seconds": 165.5}
+PASS {"ts": "2026-11-18T13:12:36-0600", "query": "vintage graphic tee under $30", "status": "stopped", "stopped_at": "suggest_outfit", "item": "lst_002", "output": null, "model_calls": 5, "retries": 4, "prompt_tokens": 0, "output_tokens": 0, "latency_ms": 165645, "error": "Found Y2K Baby Tee — Butterfly Print ($18 on depop), but suggest_outfit failed. Still failing after 5 attempts. Couldn't reach the model: timed out Then run the same query again.", "client_seconds": 165.6}
+```
+
+*Criterion 4:* `""`, `"   "`, `"under $30"`, and a non-JSON body. No model calls.
+
+```
+PASS {"http": 400, "ts": "2026-11-18T13:27:35-0600", "query": "", "status": "bad_request", "stopped_at": null, "output": null, "error": "no 'query' field", "latency_ms": 0}
+PASS {"http": 400, "ts": "2026-11-18T13:27:35-0600", "query": "", "status": "bad_request", "stopped_at": null, "output": null, "error": "no 'query' field", "latency_ms": 0}
+PASS {"http": 200, "ts": "2026-11-18T13:27:35-0600", "query": "under $30", "status": "stopped", "stopped_at": "parse_query", "item": null, "output": null, "model_calls": 0, "retries": 0, "prompt_tokens": 0, "output_tokens": 0, "latency_ms": 1, "error": "Tell me what you're looking for, e.g. 'vintage graphic tee under $30'."}
+PASS {"http": 400, "ts": "2026-11-18T13:27:35-0600", "query": "", "status": "bad_request", "stopped_at": null, "output": null, "error": "no 'query' field", "latency_ms": 0}
+```
+
+*Criterion 5:* from Render. One ok record and two failures, out of the 20.
+
+```
+PASS {"error": null, "item": "lst_002", "latency_ms": 18916, "model_calls": 2, "output": "Channel your inner 2000s pop star with this precious white, pink, and purple Y2K Baby Tee — Butterfly Print, giving major nostalgic mall-rat energy. Grab it now for just $18.00 exclusively on Depop before it's gone! Style it with baggy low-rise denim for a sweet daytime look, or toughen it up with a zip hoodie and combat boots for the ultimate edgy cyber-babe vibe.", "output_tokens": 156, "prompt_tokens": 424, "query": "vintage graphic tee under $30", "retries": 0, "status": "ok", "stopped_at": null, "ts"
+PASS {"error": "no 'query' field", "latency_ms": 0, "output": null, "query": "", "status": "bad_request", "stopped_at": null, "ts": "2026-11-18T19:08:52+0000"}
+PASS {"error": "no 'query' field", "latency_ms": 0, "output": null, "query": "", "status": "bad_request", "stopped_at": null, "ts": "2026-11-18T19:08:53+0000"}
+```
+
+**Caveats**
+
+- Criteria 1–4 ran on my machine, not on Render. Render's free tier has no
+  way to inject failures, and the code path is the same `serve.py` +
+  `run_agent`.
+- Criterion 3 has only 14 s of headroom (165.6 s against 180 s). Raising
+  `MAX_RETRIES` or `REQUEST_TIMEOUT_S` would break it.
+- A user waiting 166 s for a hung model is slow, even though it's bounded.
+  The criterion is about not hanging forever, not about being fast.
+
 <!-- ═════════════════════════════════════════════════════════════════════
 
      SUBMISSION CHECKLIST — unit 3
