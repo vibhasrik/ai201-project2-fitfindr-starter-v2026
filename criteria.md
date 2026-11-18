@@ -163,3 +163,90 @@ any.
      A number you missed stays where it is, gets diagnosed, and gets a fix
      attempted. That's where the points are.
      ───────────────────────────────────────────────────────────────────────── -->
+
+---
+
+# Extension criteria — Shape B: harden against failure
+
+Written before the Milestone 5 tests. All five are about the extension. 2–4
+are about the bad path. Failures are injected by replacing the model client
+with a fake that returns 503s, hangs, or empty text.
+
+---
+
+## 1. A temporary 503 doesn't cost the fit card
+
+When a model call returns `503 UNAVAILABLE` once and then succeeds, the run
+finishes with a fit card, and its log line shows `retries` ≥ 1. 5 of 5 tries.
+
+**Why this target:**
+
+In unit 4, 7 of 65 runs lost their fit card to a single 503, and this is the
+fix for that. With the failure injected, the retry path is plain code with no
+randomness, so any miss means the retry is broken. Losing a card to a one-off
+spike is the exact failure I'm fixing, so I'm not allowing one.
+
+---
+
+## 2. A model that keeps failing ends in a clear stop, not a crash
+
+When every attempt fails (503 on all 5 attempts, or an empty response), `/ask`
+returns HTTP 200 with `session["error"]` set, `stopped_at` naming the tool that
+failed, and a log line with `status: "stopped"`. No 500s, no stack traces.
+5 of 5 tries for each of the two failure types.
+
+**Why this target:**
+
+Before this unit, running out of retries raised `RuntimeError`, which the
+agent didn't catch, so a long outage became a 500. A user can act on "the
+model failed, try again". They can't act on a stack trace. This is
+deterministic code, so 5 of 5.
+
+---
+
+## 3. A hung model call can't hang the request
+
+When the model never answers, `/ask` still returns a stopped session within
+180 seconds. 5 of 5 tries.
+
+**Why this target:**
+
+The worst case by design is 5 attempts × 30 s timeout + 15 s of backoff =
+165 s, so 180 s leaves margin without hiding a missing timeout. A stricter
+number would mean lowering `REQUEST_TIMEOUT_S`, which would start failing
+slow but real answers (one live run took 20 s). It has to stay under
+gunicorn's `--timeout 400`, or the worker is killed and no log line is
+written.
+
+---
+
+## 4. Bad input is rejected before any model call
+
+Each of these four inputs gets a 400 or a session with
+`stopped_at: "parse_query"`, makes `model_calls: 0`, and writes a log line:
+`""`, `"   "`, `"under $30"`, and a body that isn't JSON. 4 of 4 inputs,
+every time.
+
+**Why this target:**
+
+A blank query used to be sent to search as an empty description. Each wasted
+model call counts against a 15-per-minute free tier, and the server handles
+one request at a time. Input checks are plain code, so anything under 100%
+means a check is missing.
+
+---
+
+## 5. Every request leaves a log record
+
+For a batch of 20 requests (10 matching, 10 failing or rejected), `/logs`
+returns exactly 20 new records, and every record has `ts`, `query`, `status`,
+`latency_ms` and `error`. A record with `status: "ok"` also has a non-empty
+`output` and `prompt_tokens` > 0. 20 of 20.
+
+**Why this target:**
+
+A failure that only shows up as a missing line is one I'll never find, and the
+cost numbers in the README come from these records. One silent request means
+the log can't be trusted for counting. Tokens > 0 on ok runs checks that the
+cache is really off on Render. Otherwise the cost measurement is measuring
+the cache.
