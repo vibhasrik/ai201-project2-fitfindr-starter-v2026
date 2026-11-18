@@ -760,6 +760,98 @@ PASS {"error": "no 'query' field", "latency_ms": 0, "output": null, "query": "",
 - A user waiting 166 s for a hung model is slow, even though it's bounded.
   The criterion is about not hanging forever, not about being fast.
 
+---
+
+## Verdicts and Improvement — Extension
+
+**Verdicts (Milestone 5, against the Milestone 4 targets):** all five MET,
+in all three runs.
+
+| Criterion | Target | Verdict |
+|---|---|---|
+| 1. One 503 still gets a fit card | 5 of 5 | MET (15/15) |
+| 2. Model keeps failing → clear stop | 5 of 5 per type | MET (30/30) |
+| 3. Hung model call returns within 180 s | 5 of 5 | MET (15/15) |
+| 4. Bad input rejected, 0 model calls | 4 of 4 | MET (12/12) |
+| 5. Every request leaves a complete log record | 20 of 20 | MET (60/60) |
+
+**Were the targets set low? Yes, criterion 3.**
+
+- Every hung try took 165.6 s, and the target was 180 s. I set the target
+  to fit my design, not to what a user would put up with.
+- Nobody waits almost 3 minutes for an error message.
+- **Tightened to 75 s** (recorded as a revision in `criteria.md`). Against
+  75 s, the Milestone 5 runs score **0/5, 0/5, 0/5: MISSED.**
+- Criteria 1, 2 and 4 are deterministic with injected failures, so 5 of 5 was
+  already the only sensible target. Criterion 5 is already 20 of 20.
+
+**Diagnosis of the 75 s miss**
+
+- **Stage:** `generate.py::generate`, the retry loop.
+- **Mechanism:** a timeout was treated like a 503. It was retried up to
+  `MAX_RETRIES` (5) times, and each try waits the full
+  `REQUEST_TIMEOUT_S` (30 s) before failing. Hence 5 × 30 s + 15 s backoff
+  = 165 s.
+- A 503 fails fast, so retrying it 5 times is cheap. A timeout has already
+  cost 30 s. The retry policy assumed every failure costs the same.
+
+**The one change** (`generate.py::generate`, commit `c9f9ed3`): retry a
+timeout once, then stop. A second timeout means the model is hung. 503s and
+429s are unchanged.
+
+```python
+if _is_timeout(exc):
+    timeouts += 1
+    if timeouts >= 2:
+        break
+```
+
+### Run Log — After
+
+Same `test_hardening.py`, three new runs. Criterion 5 was rerun on Render
+after deploying the change. Raw output is in `results/hardening_run{1,2,3}_after_*.md`.
+
+| Criterion | Target | Run 1 | Run 2 | Run 3 | Verdict |
+|---|---|---|---|---|---|
+| 1. One 503 still gets a fit card | 5 of 5 | 5/5 | 5/5 | 5/5 | MET |
+| 2. Model keeps failing → clear stop | 5 of 5 per type | 10/10 | 10/10 | 10/10 | MET |
+| 3. Hung model call returns within **75 s** | 5 of 5 | 5/5 | 5/5 | 5/5 | MET |
+| 4. Bad input rejected, 0 model calls | 4 of 4 | 4/4 | 4/4 | 4/4 | MET |
+| 5. Every request leaves a complete log record | 20 of 20 | 20/20 | 20/20 | 20/20 | MET |
+
+Criterion 3 after, run 1 (`serve.py::_log` record, plus the measured seconds):
+
+```
+PASS {"ts": "2026-11-18T15:29:17-0600", "query": "vintage graphic tee under $30", "status": "stopped", "stopped_at": "suggest_outfit", "item": "lst_002", "output": null, "model_calls": 2, "retries": 1, "prompt_tokens": 0, "output_tokens": 0, "latency_ms": 61468, "error": "Found Y2K Baby Tee — Butterfly Print ($18 on depop), but suggest_outfit failed. Still failing after 2 attempts. Couldn't reach the model: timed out Then run the same query again.", "client_seconds": 61.5}
+```
+
+### Before and after
+
+| Criterion | Before | After |
+|---|---|---|
+| 1. One 503 → fit card | 15/15 | 15/15 |
+| 2. Clear stop when the model keeps failing | 30/30 | 30/30 |
+| 3. Hung call, time to answer | 165.6 s every try | **61.5 s** every try |
+| 3. Against the 75 s target | **MISSED** (0/15) | **MET** (15/15) |
+| 4. Bad input | 12/12 | 12/12 |
+| 5. Log completeness on Render | 60/60 | 60/60 |
+
+**Did it help?** Yes, for the thing it targeted. A hung model now costs the
+user 61.5 s instead of 165.6 s, and nothing else moved.
+
+**The trade:** a model that's alive but slower than 30 s twice in a row used
+to get 5 chances, and now it gets 2. In the live runs no single call came
+close to 30 s (the slowest whole run was 19.8 s, for 2 calls), so I think
+that's the right trade. If it turned out wrong, the knob is
+`REQUEST_TIMEOUT_S`, not the retry count.
+
+**Noticed during the rerun, not fixed:** the first "after" attempt against
+Render hung for ~30 minutes with no log records. It started while Render was
+still redeploying. In-flight requests stalled during the switch, and the new
+instance started with an empty log. Waiting for `/health` and one real
+`/ask` to succeed before testing fixed it. A deploy-time gap like that is
+invisible in my logs, which only exist inside the app.
+
 <!-- ═════════════════════════════════════════════════════════════════════
 
      SUBMISSION CHECKLIST — unit 3

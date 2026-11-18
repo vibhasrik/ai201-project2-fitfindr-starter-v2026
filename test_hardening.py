@@ -196,7 +196,7 @@ def write(out, results, note=""):
 
 if __name__ == "__main__":
     p = argparse.ArgumentParser()
-    p.add_argument("--run", type=int, required=True)
+    p.add_argument("--run", required=True)
     p.add_argument("--part", choices=["local", "live"], required=True)
     a = p.parse_args()
     out = config.RESULTS_DIR / f"hardening_run{a.run}_{a.part}.md"
