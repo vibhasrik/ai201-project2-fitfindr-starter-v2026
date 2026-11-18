@@ -609,6 +609,75 @@ failures show up in numbers instead of scrollback.
   plus a clear error are enough. A second provider would double the surface
   I have to test.
 
+---
+
+## Instrumentation
+
+Every `/ask` request writes one JSON line to `logs/runs.jsonl` (also on stdout).
+`GET /logs` reads it back. Field meanings are in [RUNNING.md](RUNNING.md#the-run-log).
+
+These came from the deployed app (`https://ai201-fitfindr.onrender.com/logs?n=14`),
+with the cache off.
+
+**Ten measured runs:**
+
+```
+{"ts": "2026-11-18T18:55:50+0000", "query": "vintage graphic tee under $30", "status": "ok", "stopped_at": null, "item": "lst_002", "output": "Channel peak nostalgic energy with this Y2K Baby Tee — Butterfly Print, featuring dreamy pink and purple graphics that nail that sweet-yet-edgy early-2000s streetwear vibe. Score this nostalgic piece right now on Depop for just $18.00 before it's gone!", "model_calls": 3, "retries": 1, "prompt_tokens": 436, "output_tokens": 137, "latency_ms": 19752, "error": null}
+{"ts": "2026-11-18T18:55:57+0000", "query": "baggy jeans size W30 under $50", "status": "ok", "stopped_at": null, "item": "lst_001", "output": "Scored these dreamy medium wash vintage Levi's 501 jeans for just $38.00 on depop, and they instantly elevate any streetwear rotation. Whether you're throwing them on with an oversized crewneck for that effortless off-duty aesthetic or pairing them with a black denim jacket and combat boots for an edgy vibe, they are the ultimate everyday staple. Grab them before they're gone!", "model_calls": 2, "retries": 0, "prompt_tokens": 465, "output_tokens": 180, "latency_ms": 7182, "error": null}
+{"ts": "2026-11-18T18:56:04+0000", "query": "black combat boots", "status": "ok", "stopped_at": null, "item": "lst_003", "output": "Channeling major 90s grunge with this Woolrich Oversized Flannel Shirt — Plaid Red/Black found on thredUp for just $22.00! It's the ultimate layering piece whether you're pairing it open over a tank and combat boots or buttoned up with wide-leg trousers for a retro-casual aesthetic.", "model_calls": 2, "retries": 0, "prompt_tokens": 506, "output_tokens": 207, "latency_ms": 6027, "error": null}
+{"ts": "2026-11-18T18:56:10+0000", "query": "cottagecore dress under $40", "status": "ok", "stopped_at": null, "item": "lst_013", "output": "Channeling ultimate 90s romance with this gorgeous floral midi silk slip dress, giving major vintage cottagecore energy. Grab it on Depop for just $30.00 before I decide to keep it for myself! Style it grunge with a cozy crewneck and combat boots, or keep it streetwear-chic layered over baggy denim.", "model_calls": 2, "retries": 0, "prompt_tokens": 490, "output_tokens": 183, "latency_ms": 6543, "error": null}
+{"ts": "2026-11-18T18:56:17+0000", "query": "denim jacket size M", "status": "ok", "stopped_at": null, "item": "lst_004", "output": "Scored this vintage 90s Champion track jacket for just $45.00 on Poshmark, and it’s the ultimate piece for nailing that effortless, sporty streetwear vibe. Throw it on over a white ribbed tank and baggy jeans for an easy retro look, or layer it up with trousers and boots when you want something a little more textured.", "model_calls": 2, "retries": 0, "prompt_tokens": 492, "output_tokens": 196, "latency_ms": 6561, "error": null}
+{"ts": "2026-11-18T18:56:25+0000", "query": "sneakers size US 9 under $80", "status": "ok", "stopped_at": null, "item": "lst_035", "output": "Scored these minimal off-white canvas sneakers for just $20.00 on Poshmark, and they are officially my new daily streetwear staple. Whether I'm styling them with baggy dark wash denim and a vintage jacket or keeping it ultra-relaxed in neutral trousers, they nail that effortless everyday vibe.", "model_calls": 2, "retries": 0, "prompt_tokens": 424, "output_tokens": 132, "latency_ms": 8117, "error": null}
+{"ts": "2026-11-18T18:56:32+0000", "query": "oversized hoodie under $35", "status": "ok", "stopped_at": null, "item": "lst_003", "output": "Scored this Woolrich Oversized Flannel Shirt — Plaid Red/Black on thredUp for just $22.00, and it’s the ultimate piece for nailing that effortless, everyday grunge vibe. I love throwing it on over a cropped hoodie with combat boots for instant streetwear texture, or keeping it casual open over a ribbed tank.", "model_calls": 2, "retries": 0, "prompt_tokens": 510, "output_tokens": 210, "latency_ms": 6354, "error": null}
+{"ts": "2026-11-18T18:56:49+0000", "query": "leather belt", "status": "ok", "stopped_at": null, "item": "lst_014", "output": "Thrifting wins are the best kind, and this Leather Belt in brown, braided is my new favorite find for just $12.00 on thredUp! It adds the ultimate vintage western touch to an effortless earth-toned fit with khaki trousers and a ribbed tank, or looks just as good layered over baggy denim and an oversized crewneck.", "model_calls": 2, "retries": 0, "prompt_tokens": 435, "output_tokens": 159, "latency_ms": 16850, "error": null}
+{"ts": "2026-11-18T18:56:57+0000", "query": "y2k mini skirt size S", "status": "ok", "stopped_at": null, "item": "lst_039", "output": "Channeling effortless Y2K nostalgia with this vintage tan leather Mini Shoulder Bag, found on Poshmark for just $38.00. Whether I'm styling it with baggy indigo denim and a zip hoodie for casual street days or pairing it with wide-leg khaki trousers and combat boots for an elevated neutral moment, this piece instantly ties the whole look together.", "model_calls": 2, "retries": 0, "prompt_tokens": 475, "output_tokens": 200, "latency_ms": 7337, "error": null}
+{"ts": "2026-11-18T18:57:04+0000", "query": "cargo pants under $30", "status": "ok", "stopped_at": null, "item": "lst_011", "output": "Channeling peak early-2000s utility and effortless streetwear vibes with these Khaki Low-Rise Cargo Pants, currently listed on Poshmark for just $27.00. Whether you're pairing them with a ribbed tank and chunky sneakers or leaning into a grungier aesthetic with black combat boots and a zip hoodie, this versatile Y2K staple is ready for your rotation.", "model_calls": 2, "retries": 0, "prompt_tokens": 467, "output_tokens": 185, "latency_ms": 7692, "error": null}
+```
+
+Run 1 hit a real retry on Render (`retries: 1`, `model_calls: 3`) and still
+finished with a fit card.
+
+**Failed and rejected runs:**
+
+```
+{"ts": "2026-11-18T18:57:05+0000", "query": "", "status": "bad_request", "stopped_at": null, "output": null, "latency_ms": 0, "error": "no 'query' field"}
+{"ts": "2026-11-18T18:57:05+0000", "query": "", "status": "bad_request", "stopped_at": null, "output": null, "latency_ms": 0, "error": "no 'query' field"}
+{"ts": "2026-11-18T18:57:05+0000", "query": "under $30", "status": "stopped", "stopped_at": "parse_query", "item": null, "output": null, "model_calls": 0, "retries": 0, "prompt_tokens": 0, "output_tokens": 0, "latency_ms": 0, "error": "Tell me what you're looking for, e.g. 'vintage graphic tee under $30'."}
+{"ts": "2026-11-18T18:57:09+0000", "query": "designer ballgown size XXS under $5", "status": "stopped", "stopped_at": "search_listings", "item": null, "output": null, "model_calls": 0, "retries": 0, "prompt_tokens": 0, "output_tokens": 0, "latency_ms": 3990, "error": "No listings matched \"designer ballgown\" in size XXS under $5. Try to use fewer or different keywords, or try another size, or raise your max price."}
+```
+
+- Blank query (`"   "`) and a non-JSON body: rejected with a 400 and logged as `bad_request`.
+- `under $30` (a price but nothing to look for): stopped at `parse_query` before search ran.
+- An impossible query: stopped at `search_listings` with a message saying what to change.
+
+---
+
+## What It Costs
+
+**Per run: about 470 prompt + 179 output tokens (649 total), 2.1 model calls, 9.2 seconds.**
+
+| | Average | Min | Max |
+|---|---|---|---|
+| Model calls | 2.1 | 2 | 3 |
+| Prompt tokens | 470 | 424 | 510 |
+| Output tokens | 179 | 132 | 210 |
+| Latency | 9.2 s | 6.0 s | 19.8 s |
+
+**How I measured it:**
+
+- Sent 10 different matching queries to the deployed app, one at a time, with `AI201_CACHE=0`.
+- Token counts are what the Gemini API reported on each response (`usage_metadata`), summed per request in `serve.py`.
+- Latency is wall-clock time for the whole request, measured in `serve.py`.
+- Averaged the 10 log lines above.
+
+**What it costs in money:** $0. The free Gemini tier and the free Render
+instance charge nothing. The real limits are the free-tier rate of 15 model
+calls per minute (about 7 runs a minute) and time: about 9 seconds per run,
+and about a minute when Render has to wake the app up.
+
+**Why runs vary:** most took 6–8 s. Two took 17–20 s. Run 1's extra time was
+its retry. Run 8 had no retry, so the model was just slow to answer.
+
 <!-- ═════════════════════════════════════════════════════════════════════
 
      SUBMISSION CHECKLIST — unit 3

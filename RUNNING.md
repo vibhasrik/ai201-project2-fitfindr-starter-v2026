@@ -128,15 +128,15 @@ Useful flags on `ask`:
 
 ## Running it hosted (Render)
 
-**Live URL:** `RENDER_URL` (free tier: the first request after ~15 idle
+**Live URL:** `https://ai201-fitfindr.onrender.com` (free tier: the first request after ~15 idle
 minutes takes about a minute while it wakes up)
 
 ```bash
-curl RENDER_URL/health
-curl -X POST RENDER_URL/ask \
+curl https://ai201-fitfindr.onrender.com/health
+curl -X POST https://ai201-fitfindr.onrender.com/ask \
   -H 'Content-Type: application/json' \
   -d '{"query": "vintage graphic tee under $30"}'
-curl 'RENDER_URL/logs?n=10'          # read the run log back
+curl 'https://ai201-fitfindr.onrender.com/logs?n=10'          # read the run log back
 ```
 
 ### How it got there
