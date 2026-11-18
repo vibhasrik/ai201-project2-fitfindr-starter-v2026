@@ -678,6 +678,32 @@ and about a minute when Render has to wake the app up.
 **Why runs vary:** most took 6–8 s. Two took 17–20 s. Run 1's extra time was
 its retry. Run 8 had no retry, so the model was just slow to answer.
 
+**100 people a day, on a paid key:** about **6 cents a day ($1.77 a month)**,
+assuming one query per person.
+
+```
+price (gemini-3.5-flash-lite, paid tier): $0.30 / 1M input, $2.50 / 1M output
+
+per run:   470 input  × $0.30 / 1,000,000 = $0.000141
+           179 output × $2.50 / 1,000,000 = $0.000448
+                                    total = $0.000589
+
+per day:   100 runs × $0.000589 = $0.0589   (64,900 tokens, 210 model calls)
+per month: $0.0589 × 30         = $1.77
+
+compute:   100 runs × 9.2 s = 920 s ≈ 15 minutes of server time a day
+```
+
+- The token counts are measured. The prices are not. They come from
+  third-party listings that agree with each other, and I haven't checked them
+  against Google's pricing page.
+- Gemini bills "thinking" tokens as output, and my log only counts the
+  answer's tokens (`candidates_token_count`). If the model thinks, the real
+  cost is higher than this.
+- Money isn't the limit at this size. The free tier's 15 calls per minute is:
+  100 runs spread over a day is fine, but 10 people arriving in the same
+  minute would queue.
+
 ---
 
 ## Run Log — Extension
@@ -851,6 +877,41 @@ still redeploying. In-flight requests stalled during the switch, and the new
 instance started with an empty log. Waiting for `/health` and one real
 `/ask` to succeed before testing fixed it. A deploy-time gap like that is
 invisible in my logs, which only exist inside the app.
+
+---
+
+## What's Still Broken — Extension
+
+No extension criterion is still missed. All five MET after the change,
+including criterion 3 at its tightened 75 s target.
+
+**Which target is still too low: criterion 5 (every request is logged).**
+
+- It passed 60/60, but only for requests sent one at a time to a server that
+  was already up.
+- The one real logging failure I saw, the stalled run during a Render
+  redeploy, is exactly the case it never tests.
+- **Tighten it to:** "Send 20 requests while a redeploy happens partway
+  through. Every request either gets a response or is listed as failed by
+  the client, and the log plus the client's record together account for
+  20 of 20."
+- Right now it can't pass, because the log file is wiped on redeploy.
+
+**Other limits I'm leaving open:**
+
+- Criteria 1–4 were tested on my machine with injected failures, not on
+  Render. I can't make Render's model fail on demand.
+- The unit 4 criterion 5 miss (One Size items matching every size) is still
+  there. It was out of scope for this shape.
+
+---
+
+## What I'd Do Next
+
+I'd send the run log somewhere outside the app (Render's log stream into a
+log service, or a small hosted database) before anything else. Every number
+in this unit came from a file Render deletes on each deploy, and the one real
+failure I hit — the stalled redeploy — left no record at all.
 
 <!-- ═════════════════════════════════════════════════════════════════════
 
